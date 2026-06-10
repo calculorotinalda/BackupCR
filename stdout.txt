@@ -1,0 +1,7 @@
+  Determining projects to restore...
+C:\Users\alll\downloads\backupcr\BackupCR.csproj : warning NU1603: BackupCR depends on Microsoft.AspNetCore.Components.WebView.Wpf (>= 8.0.0) but Microsoft.AspNetCore.Components.WebView.Wpf 8.0.0 was not found. Microsoft.AspNetCore.Components.WebView.Wpf 8.0.3 was resolved instead.
+  All projects are up-to-date for restore.
+C:\Users\alll\downloads\backupcr\BackupCR.csproj : warning NU1603: BackupCR depends on Microsoft.AspNetCore.Components.WebView.Wpf (>= 8.0.0) but Microsoft.AspNetCore.Components.WebView.Wpf 8.0.0 was not found. Microsoft.AspNetCore.Components.WebView.Wpf 8.0.3 was resolved instead.
+C:\Users\alll\downloads\backupcr\BackupCR_gm13ghvv_wpftmp.csproj : warning NU1603: BackupCR depends on Microsoft.AspNetCore.Components.WebView.Wpf (>= 8.0.0) but Microsoft.AspNetCore.Components.WebView.Wpf 8.0.0 was not found. Microsoft.AspNetCore.Components.WebView.Wpf 8.0.3 was resolved instead.
+  BackupCR -> C:\Users\alll\downloads\backupcr\bin\Release\net8.0-windows\win-x64\BackupCR.dll
+  BackupCR -> C:\Users\alll\downloads\backupcr\bin\Release\net8.0-windows\win-x64\publish\

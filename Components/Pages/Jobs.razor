@@ -1,0 +1,552 @@
+@page "/jobs"
+@implements IDisposable
+@inject BackupDbContext DbContext
+@inject IBackupEngine BackupEngine
+
+<div class="section-header" style="margin-bottom: 24px;">
+    <h2 class="section-title" style="font-size: 20px;">Tarefas de Backup Agendadas</h2>
+    <button class="btn btn-primary" @onclick="OpenNewJobWizard">
+        <svg class="nav-icon" viewBox="0 0 24 24" style="width:16px;height:16px;">
+            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/>
+        </svg>
+        Nova Tarefa
+    </button>
+</div>
+
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Nome</th>
+                <th>Origem / Tipo</th>
+                <th>Repositório</th>
+                <th>Agendamento</th>
+                <th>Última Execução</th>
+                <th>Status / Progresso</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!_jobs.Any())
+            {
+                <tr>
+                    <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 40px 0;">
+                        Nenhuma tarefa de backup configurada. Clique em "Nova Tarefa" para começar.
+                    </td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var job in _jobs)
+                {
+                    var isRunning = BackupEngine.IsRunning(job.Id);
+                    var currentProgress = BackupEngine.GetProgress(job.Id);
+                    var currentOp = BackupEngine.GetCurrentOperation(job.Id);
+
+                    <tr>
+                        <td style="font-weight: 600;">@job.Name</td>
+                        <td>
+                            @if (job.BackupVm)
+                            {
+                                <div><span class="badge badge-info" style="font-size:10px; padding: 2px 6px;">VM</span> @job.VmName (@job.VmType)</div>
+                            }
+                            else if (job.BackupDatabase)
+                            {
+                                <div><span class="badge badge-info" style="font-size:10px; padding: 2px 6px;">DB</span> SQL Database</div>
+                            }
+                            else
+                            {
+                                <div style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="@job.SourcePaths">
+                                    @job.SourcePaths
+                                </div>
+                            }
+                            <div style="font-size: 11px; color: var(--text-secondary);">Tipo: @job.BackupType</div>
+                        </td>
+                        <td>@(job.Destination?.Name ?? "Nenhum")</td>
+                        <td>
+                            <div>@GetScheduleLabel(job.ScheduleType)</div>
+                            <div style="font-size:11px; color: var(--text-secondary);">@job.ScheduleTime</div>
+                        </td>
+                        <td>
+                            @if (job.LastRunTime != null)
+                            {
+                                <div>@job.LastRunTime?.ToString("dd/MM HH:mm")</div>
+                                <span class="badge @GetStatusBadgeClass(job.LastRunStatus ?? "Never")">@job.LastRunStatus</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-secondary">Nunca</span>
+                            }
+                        </td>
+                        <td style="min-width: 150px;">
+                            @if (isRunning)
+                            {
+                                <div style="display:flex; flex-direction:column; gap:4px;">
+                                    <div style="display:flex; justify-content:space-between; font-size:11px;">
+                                        <span style="color:var(--accent-color); font-weight:600;">@currentOp</span>
+                                        <span>@currentProgress%</span>
+                                    </div>
+                                    <div class="progress-container">
+                                        <div class="progress-bar-fill" style="width: @currentProgress%"></div>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <span style="font-size:13px; color: var(--text-secondary);">Pronto</span>
+                            }
+                        </td>
+                        <td>
+                            <div style="display: flex; gap: 8px;">
+                                @if (isRunning)
+                                {
+                                    <button class="btn btn-secondary btn-icon-only" style="color: var(--error);" title="Em execução" disabled>
+                                        <span class="fluent-spinner" style="width:14px;height:14px;border-width:2px;margin-bottom:0;"></span>
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-primary btn-icon-only" @onclick="() => RunJobNow(job.Id)" title="Executar Agora" style="background:#107c41;">
+                                        <svg viewBox="0 0 24 24" style="width:14px;height:14px; fill:currentColor;"><path d="M8 5v14l11-7z"/></svg>
+                                    </button>
+                                }
+                                <button class="btn btn-secondary btn-icon-only" @onclick="() => EditJob(job)" title="Editar">
+                                    <svg viewBox="0 0 24 24" style="width:14px;height:14px; fill:currentColor;"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                                </button>
+                                <button class="btn btn-secondary btn-icon-only" @onclick="() => DeleteJob(job.Id)" title="Excluir" style="color: var(--error);">
+                                    <svg viewBox="0 0 24 24" style="width:14px;height:14px; fill:currentColor;"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+<!-- Step Wizard Modal for New/Edit Job -->
+@if (_showWizard)
+{
+    <div class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="section-title">@(_editingJobId == null ? "Assistente de Configuração de Backup" : "Editar Configurações de Backup")</h3>
+                <button class="theme-toggle" @onclick="CloseWizard" style="border:none;">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <!-- Wizard Steps Indicator -->
+                <div class="wizard-steps">
+                    <div class="wizard-step @GetWizardStepCss(1)">
+                        <div class="step-num">1</div>
+                        <span class="step-label">Escopo</span>
+                    </div>
+                    <div class="wizard-step @GetWizardStepCss(2)">
+                        <div class="step-num">2</div>
+                        <span class="step-label">Origem</span>
+                    </div>
+                    <div class="wizard-step @GetWizardStepCss(3)">
+                        <div class="step-num">3</div>
+                        <span class="step-label">Destino</span>
+                    </div>
+                    <div class="wizard-step @GetWizardStepCss(4)">
+                        <div class="step-num">4</div>
+                        <span class="step-label">Políticas</span>
+                    </div>
+                </div>
+
+                @if (_wizardStep == 1)
+                {
+                    <!-- Step 1: Basic scope -->
+                    <div class="form-group">
+                        <label class="form-label">Nome do Job de Backup</label>
+                        <input type="text" class="form-control" @bind="_jobModel.Name" placeholder="Ex: Backup de Arquivos Financeiros" />
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Tipo de Recurso</label>
+                        <div style="display:flex; gap:16px; margin-top:8px;">
+                            <label class="checkbox-group">
+                                <input type="radio" name="scopeType" checked="@(!_jobModel.BackupVm && !_jobModel.BackupDatabase)" @onclick="() => SetScopeType(false, false)" />
+                                <span>Arquivos e Pastas</span>
+                            </label>
+                            <label class="checkbox-group">
+                                <input type="radio" name="scopeType" checked="@_jobModel.BackupVm" @onclick="() => SetScopeType(true, false)" />
+                                <span>Máquina Virtual (VM)</span>
+                            </label>
+                            <label class="checkbox-group">
+                                <input type="radio" name="scopeType" checked="@_jobModel.BackupDatabase" @onclick="() => SetScopeType(false, true)" />
+                                <span>Banco de Dados SQL</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    @if (_jobModel.BackupVm)
+                    {
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Hypervisor</label>
+                                <select class="form-control" @bind="_jobModel.VmType">
+                                    <option value="VMware">VMware vSphere ESXi</option>
+                                    <option value="Hyper-V">Microsoft Hyper-V</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Nome da VM</label>
+                                <input type="text" class="form-control" @bind="_jobModel.VmName" placeholder="Ex: SRV-APP-01" />
+                            </div>
+                        </div>
+                    }
+
+                    @if (_jobModel.BackupDatabase)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">String de Conexão SQL</label>
+                            <input type="text" class="form-control" @bind="_jobModel.DbConnectionString" placeholder="Ex: Server=myServerAddress;Database=myDataBase;Uid=myUsername;Pwd=myPassword;" />
+                        </div>
+                    }
+                }
+                else if (_wizardStep == 2)
+                {
+                    <!-- Step 2: Source selection -->
+                    @if (!_jobModel.BackupVm && !_jobModel.BackupDatabase)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Caminhos de Origem (Separe com ponto e vírgula ';')</label>
+                            <textarea class="form-control" style="height:100px;" @bind="_jobModel.SourcePaths" placeholder="Ex: C:\MeusDocumentos; D:\DadosClientes"></textarea>
+                            <span style="font-size:11px; color:var(--text-secondary);">Dica: Insira caminhos locais ou de compartilhamento de rede acessíveis pelo agente.</span>
+                        </div>
+                    }
+                    else if (_jobModel.BackupVm)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Identificador de Disco ou Endereço de IP do Host</label>
+                            <input type="text" class="form-control" @bind="_jobModel.SourcePaths" placeholder="Ex: vCenter-Server-Cluster/Discos/VM-Prod-01.vmdk" />
+                        </div>
+                    }
+                    else if (_jobModel.BackupDatabase)
+                    {
+                        <div class="form-group">
+                            <label class="form-label">Tabelas / Escopo de Exportação do Backup</label>
+                            <input type="text" class="form-control" @bind="_jobModel.SourcePaths" placeholder="Ex: Toda a Base (Dump completo)" />
+                        </div>
+                    }
+                }
+                else if (_wizardStep == 3)
+                {
+                    <!-- Step 3: Destination selection -->
+                    <div class="form-group">
+                        <label class="form-label">Repositório de Destino</label>
+                        <select class="form-control" @bind="_jobModel.DestinationId">
+                            <option value="0">-- Selecione um Repositório --</option>
+                            @foreach (var dest in _destinations)
+                            {
+                                <option value="@dest.Id">@dest.Name (@dest.Type - @dest.Path)</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="form-row" style="margin-top: 8px;">
+                        <div class="form-group">
+                            <label class="checkbox-group" style="margin-top: 10px;">
+                                <input type="checkbox" @bind="_jobModel.CompressData" />
+                                <span>Ativar Compressão de Dados</span>
+                            </label>
+                            <label class="checkbox-group" style="margin-top: 10px;">
+                                <input type="checkbox" @bind="_jobModel.DeduplicateData" />
+                                <span>Ativar Deduplicação (Block-level)</span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label class="checkbox-group" style="margin-top: 10px;">
+                                <input type="checkbox" @bind="_jobModel.EncryptData" />
+                                <span>Ativar Criptografia de Ponta a Ponta</span>
+                            </label>
+                            @if (_jobModel.EncryptData)
+                            {
+                                <input type="password" class="form-control" style="margin-top:6px;" @bind="_jobModel.EncryptionKey" placeholder="Senha da Criptografia (AES-256)" />
+                            }
+                        </div>
+                    </div>
+                }
+                else if (_wizardStep == 4)
+                {
+                    <!-- Step 4: Schedule and retention policies -->
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Frequência do Agendamento</label>
+                            <select class="form-control" @bind="_jobModel.ScheduleType">
+                                <option value="Manual">Manual (Apenas sob demanda)</option>
+                                <option value="Daily">Diário (Todos os dias)</option>
+                                <option value="Weekly">Semanal (Dia específico)</option>
+                                <option value="Continuous">Contínuo (CDP - A cada 15 min)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Horário / Detalhes da Execução</label>
+                            <input type="text" class="form-control" @bind="_jobModel.ScheduleTime" placeholder="Ex: 02:00 ou Sábado 23:00" />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Política de Retenção (Dias)</label>
+                            <input type="number" class="form-control" @bind="_jobModel.RetentionPolicyDays" min="1" max="365" />
+                        </div>
+                        <div class="form-group" style="display:flex; align-items:flex-end;">
+                            <label class="checkbox-group" style="margin-bottom:12px;">
+                                <input type="checkbox" @bind="_jobModel.IsActive" />
+                                <span>Habilitar Tarefa Ativa</span>
+                            </label>
+                        </div>
+                    </div>
+                }
+            </div>
+            
+            <div class="modal-footer">
+                @if (_wizardStep > 1)
+                {
+                    <button class="btn btn-secondary" @onclick="PreviousStep">Voltar</button>
+                }
+                <button class="btn btn-secondary" @onclick="CloseWizard">Cancelar</button>
+                @if (_wizardStep < 4)
+                {
+                    <button class="btn btn-primary" @onclick="NextStep" disabled="@(!ValidateCurrentStep())">Avançar</button>
+                }
+                else
+                {
+                    <button class="btn btn-primary" @onclick="SaveJob" disabled="@(!ValidateCurrentStep())" style="background:#107c41;">Salvar Configurações</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<BackupJob> _jobs = new();
+    private List<BackupDestination> _destinations = new();
+
+    private bool _showWizard = false;
+    private int _wizardStep = 1;
+    private int? _editingJobId = null;
+    private BackupJob _jobModel = new();
+
+    protected override void OnInitialized()
+    {
+        LoadData();
+        BackupEngine.OnJobProgressUpdated += HandleProgressUpdate;
+    }
+
+    private void LoadData()
+    {
+        lock (DbContext)
+        {
+            _jobs = DbContext.BackupJobs.Include(j => j.Destination).ToList();
+            _destinations = DbContext.BackupDestinations.ToList();
+        }
+    }
+
+    private void SetScopeType(bool isVm, bool isDb)
+    {
+        _jobModel.BackupVm = isVm;
+        _jobModel.BackupDatabase = isDb;
+        if (isVm)
+        {
+            _jobModel.VmType = "VMware";
+        }
+    }
+
+    private void OpenNewJobWizard()
+    {
+        _editingJobId = null;
+        _jobModel = new BackupJob
+        {
+            Name = "",
+            SourcePaths = "",
+            BackupType = "Incremental",
+            DestinationId = _destinations.FirstOrDefault()?.Id ?? 0,
+            ScheduleType = "Manual",
+            ScheduleTime = "02:00",
+            RetentionPolicyDays = 30,
+            IsActive = true,
+            CompressData = true,
+            DeduplicateData = true,
+            EncryptData = false,
+            BackupVm = false,
+            BackupDatabase = false
+        };
+        _wizardStep = 1;
+        _showWizard = true;
+    }
+
+    private void EditJob(BackupJob job)
+    {
+        _editingJobId = job.Id;
+        _jobModel = new BackupJob
+        {
+            Id = job.Id,
+            Name = job.Name,
+            SourcePaths = job.SourcePaths,
+            BackupType = job.BackupType,
+            DestinationId = job.DestinationId,
+            ScheduleType = job.ScheduleType,
+            ScheduleTime = job.ScheduleTime,
+            RetentionPolicyDays = job.RetentionPolicyDays,
+            IsActive = job.IsActive,
+            CompressData = job.CompressData,
+            DeduplicateData = job.DeduplicateData,
+            EncryptData = job.EncryptData,
+            EncryptionKey = job.EncryptionKey,
+            BackupVm = job.BackupVm,
+            VmName = job.VmName,
+            VmType = job.VmType,
+            BackupDatabase = job.BackupDatabase,
+            DbConnectionString = job.DbConnectionString
+        };
+        _wizardStep = 1;
+        _showWizard = true;
+    }
+
+    private void PreviousStep()
+    {
+        if (_wizardStep > 1) _wizardStep--;
+    }
+
+    private void NextStep()
+    {
+        if (_wizardStep < 4) _wizardStep++;
+    }
+
+    private bool ValidateCurrentStep()
+    {
+        if (_wizardStep == 1)
+        {
+            if (string.IsNullOrWhiteSpace(_jobModel.Name)) return false;
+            if (_jobModel.BackupVm && string.IsNullOrWhiteSpace(_jobModel.VmName)) return false;
+            if (_jobModel.BackupDatabase && string.IsNullOrWhiteSpace(_jobModel.DbConnectionString)) return false;
+            return true;
+        }
+        if (_wizardStep == 2)
+        {
+            return !string.IsNullOrWhiteSpace(_jobModel.SourcePaths);
+        }
+        if (_wizardStep == 3)
+        {
+            if (_jobModel.DestinationId <= 0) return false;
+            if (_jobModel.EncryptData && string.IsNullOrWhiteSpace(_jobModel.EncryptionKey)) return false;
+            return true;
+        }
+        return true;
+    }
+
+    private string GetWizardStepCss(int step)
+    {
+        if (_wizardStep == step) return "active";
+        if (_wizardStep > step) return "completed";
+        return "";
+    }
+
+    private void SaveJob()
+    {
+        lock (DbContext)
+        {
+            if (_editingJobId == null)
+            {
+                DbContext.BackupJobs.Add(_jobModel);
+            }
+            else
+            {
+                var existing = DbContext.BackupJobs.FirstOrDefault(j => j.Id == _editingJobId);
+                if (existing != null)
+                {
+                    existing.Name = _jobModel.Name;
+                    existing.SourcePaths = _jobModel.SourcePaths;
+                    existing.BackupType = _jobModel.BackupType;
+                    existing.DestinationId = _jobModel.DestinationId;
+                    existing.ScheduleType = _jobModel.ScheduleType;
+                    existing.ScheduleTime = _jobModel.ScheduleTime;
+                    existing.RetentionPolicyDays = _jobModel.RetentionPolicyDays;
+                    existing.IsActive = _jobModel.IsActive;
+                    existing.CompressData = _jobModel.CompressData;
+                    existing.DeduplicateData = _jobModel.DeduplicateData;
+                    existing.EncryptData = _jobModel.EncryptData;
+                    existing.EncryptionKey = _jobModel.EncryptionKey;
+                    existing.BackupVm = _jobModel.BackupVm;
+                    existing.VmName = _jobModel.VmName;
+                    existing.VmType = _jobModel.VmType;
+                    existing.BackupDatabase = _jobModel.BackupDatabase;
+                    existing.DbConnectionString = _jobModel.DbConnectionString;
+                }
+            }
+            DbContext.SaveChanges();
+        }
+
+        CloseWizard();
+        LoadData();
+    }
+
+    private void CloseWizard()
+    {
+        _showWizard = false;
+    }
+
+    private async Task DeleteJob(int jobId)
+    {
+        lock (DbContext)
+        {
+            var job = DbContext.BackupJobs.FirstOrDefault(j => j.Id == jobId);
+            if (job != null)
+            {
+                DbContext.BackupJobs.Remove(job);
+                DbContext.SaveChanges();
+            }
+        }
+        LoadData();
+        await Task.CompletedTask;
+    }
+
+    private void RunJobNow(int jobId)
+    {
+        // Fire backup operation asynchronously in background
+        System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                await BackupEngine.RunJobAsync(jobId);
+            }
+            catch { }
+        });
+    }
+
+    private void HandleProgressUpdate(int jobId, string status, double progress)
+    {
+        InvokeAsync(() => {
+            LoadData();
+            StateHasChanged();
+        });
+    }
+
+    private string GetScheduleLabel(string scheduleType) => scheduleType switch
+    {
+        "Manual" => "Manual",
+        "Daily" => "Diário",
+        "Weekly" => "Semanal",
+        "Continuous" => "CDP (Contínuo)",
+        _ => scheduleType
+    };
+
+    private string GetStatusBadgeClass(string status) => status switch
+    {
+        "Success" => "badge-success",
+        "Warning" => "badge-warning",
+        "Error" => "badge-danger",
+        "Running" => "badge-info",
+        _ => "badge-secondary"
+    };
+
+    public void Dispose()
+    {
+        BackupEngine.OnJobProgressUpdated -= HandleProgressUpdate;
+    }
+}

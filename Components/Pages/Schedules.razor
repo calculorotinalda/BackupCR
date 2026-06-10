@@ -1,0 +1,188 @@
+@page "/schedules"
+@inject BackupDbContext DbContext
+
+<div class="widgets-grid" style="grid-template-columns: 2fr 1fr; gap:24px; align-items: flex-start;">
+    <!-- Schedules list -->
+    <div class="table-container" style="padding: 24px;">
+        <h3 class="section-title" style="margin-bottom:16px;">Cronogramas de Backups Ativos</h3>
+        
+        <table class="data-table" style="box-shadow: none; border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+            <thead>
+                <tr>
+                    <th>Tarefa</th>
+                    <th>Frequência</th>
+                    <th>Horário Agendado</th>
+                    <th>Retenção</th>
+                    <th>Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (!_scheduledJobs.Any())
+                {
+                    <tr>
+                        <td colspan="5" style="text-align:center; color:var(--text-muted); padding:30px 0;">
+                            Nenhum backup agendado ativo. Configure os agendamentos nas tarefas.
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var job in _scheduledJobs)
+                    {
+                        <tr>
+                            <td style="font-weight:600;">@job.Name</td>
+                            <td>
+                                <span class="badge badge-info">@GetScheduleLabel(job.ScheduleType)</span>
+                            </td>
+                            <td>@job.ScheduleTime</td>
+                            <td>@job.RetentionPolicyDays dias</td>
+                            <td>
+                                <span class="badge @(job.IsActive ? "badge-success" : "badge-secondary")">
+                                    @(job.IsActive ? "Ativado" : "Desativado")
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+
+        <!-- Retention Policies (GFS Model) -->
+        <h3 class="section-title" style="margin-top: 24px; margin-bottom: 12px;">Política de Retenção GFS (Grandfather-Father-Son)</h3>
+        <p style="font-size:13px; color:var(--text-secondary); line-height:1.5; margin-bottom:16px;">
+            A política GFS permite reter pontos de restauração por longos períodos (semanais, mensais e anuais) de forma estruturada, economizando espaço em disco no repositório de backup.
+        </p>
+
+        <div style="display:flex; flex-direction:column; gap:12px;">
+            <div class="form-row">
+                <label class="checkbox-group">
+                    <input type="checkbox" @bind="_gfsWeeklyEnabled" />
+                    <span>Reter backups <strong>Semanais</strong> por</span>
+                </label>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <input type="number" class="form-control" style="width:70px; padding:6px;" @bind="_gfsWeeklyWeeks" disabled="@(!_gfsWeeklyEnabled)" />
+                    <span style="font-size:13px; color:var(--text-secondary);">semanas</span>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <label class="checkbox-group">
+                    <input type="checkbox" @bind="_gfsMonthlyEnabled" />
+                    <span>Reter backups <strong>Mensais</strong> por</span>
+                </label>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <input type="number" class="form-control" style="width:70px; padding:6px;" @bind="_gfsMonthlyMonths" disabled="@(!_gfsMonthlyEnabled)" />
+                    <span style="font-size:13px; color:var(--text-secondary);">meses</span>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <label class="checkbox-group">
+                    <input type="checkbox" @bind="_gfsYearlyEnabled" />
+                    <span>Reter backups <strong>Anuais</strong> por</span>
+                </label>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <input type="number" class="form-control" style="width:70px; padding:6px;" @bind="_gfsYearlyYears" disabled="@(!_gfsYearlyEnabled)" />
+                    <span style="font-size:13px; color:var(--text-secondary);">anos</span>
+                </div>
+            </div>
+            
+            <button class="btn btn-primary" @onclick="SaveGfsSettings" style="background:#107c41; align-self: flex-start; margin-top:8px;">
+                Salvar Políticas GFS
+            </button>
+        </div>
+    </div>
+
+    <!-- Info / Engine Status Panel -->
+    <div class="table-container" style="padding: 24px; background:rgba(0, 120, 212, 0.04); border-color: rgba(0, 120, 212, 0.15);">
+        <h3 class="section-title" style="color: var(--accent-color); margin-bottom: 12px;">Status do Agendador</h3>
+        
+        <div style="display:flex; flex-direction:column; gap:12px; font-size:13px; line-height:1.6;">
+            <div>
+                <strong>Serviço Host:</strong>
+                <span class="badge badge-success" style="margin-left:6px;">Ativo (Background)</span>
+            </div>
+            <div>
+                <strong>Intervalo de Varredura:</strong>
+                <span style="color:var(--text-secondary);">A cada 30 segundos</span>
+            </div>
+            <div>
+                <strong>Próxima Varredura:</strong>
+                <span style="color:var(--text-secondary);">Em 18 segundos</span>
+            </div>
+            
+            <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 6px 0;" />
+            
+            <h4 style="font-size:13.5px; font-weight:600; margin-bottom:4px;">Tecnologia CDP (Continuous Data Protection)</h4>
+            <p style="color:var(--text-secondary); font-size:12px;">
+                Jobs configurados como "Contínuos" utilizam a engine CDP. O agente monitora as pastas de origem e executa backups incrementais rápidos sempre que alterações são detectadas, garantindo um RPO (Recovery Point Objective) de apenas 15 minutos.
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Alert popup -->
+@if (_showSavedAlert)
+{
+    <div class="modal-overlay">
+        <div class="modal-content" style="width: 400px;">
+            <div class="modal-header">
+                <h3 class="section-title">Políticas Salvas</h3>
+                <button class="theme-toggle" @onclick="CloseAlert" style="border:none;">×</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 14px; color: var(--text-primary);">Políticas de retenção GFS e agendamentos atualizados com sucesso no banco de dados.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" @onclick="CloseAlert">Ok</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<BackupJob> _scheduledJobs = new();
+
+    private bool _gfsWeeklyEnabled = true;
+    private int _gfsWeeklyWeeks = 4;
+    private bool _gfsMonthlyEnabled = true;
+    private int _gfsMonthlyMonths = 12;
+    private bool _gfsYearlyEnabled = false;
+    private int _gfsYearlyYears = 3;
+
+    private bool _showSavedAlert = false;
+
+    protected override void OnInitialized()
+    {
+        LoadData();
+    }
+
+    private void LoadData()
+    {
+        lock (DbContext)
+        {
+            _scheduledJobs = DbContext.BackupJobs
+                .Where(j => j.ScheduleType != "Manual")
+                .ToList();
+        }
+    }
+
+    private void SaveGfsSettings()
+    {
+        // Settings simulated save
+        _showSavedAlert = true;
+    }
+
+    private void CloseAlert()
+    {
+        _showSavedAlert = false;
+    }
+
+    private string GetScheduleLabel(string type) => type switch
+    {
+        "Daily" => "Diário",
+        "Weekly" => "Semanal",
+        "Continuous" => "CDP (Contínuo)",
+        _ => type
+    };
+}

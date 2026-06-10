@@ -1,0 +1,333 @@
+@page "/"
+@implements IDisposable
+@inject BackupDbContext DbContext
+@inject IBackupEngine BackupEngine
+@inject NavigationManager NavigationManager
+
+<div class="widgets-grid">
+    <!-- Total Jobs -->
+    <div class="widget-card">
+        <div class="widget-info">
+            <span class="widget-label">Tarefas Ativas</span>
+            <span class="widget-value">@_totalJobs</span>
+        </div>
+        <div class="widget-icon-container">
+            <svg class="nav-icon" style="width:24px;height:24px;" viewBox="0 0 24 24">
+                <path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" fill="currentColor"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- Storage Used -->
+    <div class="widget-card">
+        <div class="widget-info">
+            <span class="widget-label">Armazenamento Total</span>
+            <span class="widget-value">@_totalStorageStr</span>
+        </div>
+        <div class="widget-icon-container" style="background: rgba(16, 124, 65, 0.1); color: var(--success);">
+            <svg class="nav-icon" style="width:24px;height:24px;" viewBox="0 0 24 24">
+                <path d="M20 13c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v6c0 1.1.9 2 2 2h16zm-16-8h16v6H4V5zm16 14c1.1 0 2-.9 2-2v-6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v6c0 1.1.9 2 2 2h16zm-16-8h16v6H4v-6z" fill="currentColor"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- Success Rate -->
+    <div class="widget-card">
+        <div class="widget-info">
+            <span class="widget-label">Taxa de Sucesso</span>
+            <span class="widget-value">@_successRate%</span>
+        </div>
+        <div class="widget-icon-container" style="background: rgba(16, 124, 65, 0.1); color: var(--success);">
+            <svg class="nav-icon" style="width:24px;height:24px;" viewBox="0 0 24 24">
+                <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z" fill="currentColor"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- Running/Active Status -->
+    <div class="widget-card">
+        <div class="widget-info">
+            <span class="widget-label">Alertas Recentes</span>
+            <span class="widget-value" style="color: @(_warnings > 0 ? "var(--warning)" : "var(--text-primary)");">@_warnings</span>
+        </div>
+        <div class="widget-icon-container" style="background: rgba(216, 59, 1, 0.1); color: var(--warning);">
+            <svg class="nav-icon" style="width:24px;height:24px;" viewBox="0 0 24 24">
+                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" fill="currentColor"/>
+            </svg>
+        </div>
+    </div>
+</div>
+
+<!-- Storage and Transfer Graph -->
+<div class="chart-section">
+    <div class="section-header">
+        <h3 class="section-title">Volume de Transferência Diária (Últimos 6 Dias)</h3>
+        <span style="font-size: 12px; color: var(--text-secondary);">Valores em GB</span>
+    </div>
+    
+    <div class="chart-container">
+        <svg class="bar-chart-svg" viewBox="0 0 600 220">
+            <defs>
+                <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#00c6ff" />
+                    <stop offset="100%" stop-color="#0072ff" />
+                </linearGradient>
+            </defs>
+
+            <!-- Y Axis Lines -->
+            <line x1="40" y1="20" x2="570" y2="20" class="chart-grid-line" />
+            <line x1="40" y1="70" x2="570" y2="70" class="chart-grid-line" />
+            <line x1="40" y1="120" x2="570" y2="120" class="chart-grid-line" />
+            <line x1="40" y1="170" x2="570" y2="170" class="chart-grid-line" />
+            
+            <!-- Axis Labels -->
+            <text x="30" y="24" class="chart-text" style="text-anchor: end;">40 GB</text>
+            <text x="30" y="74" class="chart-text" style="text-anchor: end;">25 GB</text>
+            <text x="30" y="124" class="chart-text" style="text-anchor: end;">10 GB</text>
+            <text x="30" y="174" class="chart-text" style="text-anchor: end;">0 GB</text>
+
+            <!-- Chart Bars -->
+            @for (int i = 0; i < _chartData.Length; i++)
+            {
+                var val = _chartData[i];
+                var height = (val / 40.0) * 150; // Scale relative to 40 max
+                if (height > 150) height = 150;
+                var x = 75 + (i * 85);
+                var y = 170 - height;
+                
+                <rect x="@x" y="@y" width="45" height="@height" rx="4" class="chart-bar" />
+                @((MarkupString)$"<text x=\"{x + 22}\" y=\"{y - 8}\" class=\"chart-text\" style=\"font-weight: 600; fill: var(--text-primary);\">{val:F1}</text>")
+                @((MarkupString)$"<text x=\"{x + 22}\" y=\"190\" class=\"chart-text\">{_chartLabels[i]}</text>")
+            }
+            
+            <line x1="40" y1="170" x2="570" y2="170" stroke="var(--text-secondary)" stroke-width="1.5" />
+        </svg>
+    </div>
+</div>
+
+<!-- Recent Executions Monitor -->
+<div class="table-container">
+    <div class="section-header" style="padding: 16px 20px; border-bottom: 1px solid var(--border-color); margin-bottom: 0;">
+        <h3 class="section-title">Histórico de Execuções Recentes</h3>
+        <button class="btn btn-secondary" @onclick="LoadData" style="padding: 6px 12px; font-size: 12px;">Atualizar</button>
+    </div>
+    
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Tarefa</th>
+                <th>Tipo</th>
+                <th>Início / Fim</th>
+                <th>Processado</th>
+                <th>Velocidade</th>
+                <th>Status</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!_logs.Any())
+            {
+                <tr>
+                    <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 40px 0;">
+                        Nenhum backup executado ainda. Crie e execute tarefas na aba "Tarefas".
+                    </td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var log in _logs)
+                {
+                    <tr>
+                        <td style="font-weight: 600;">@log.JobName</td>
+                        <td>
+                            <span class="badge badge-info">@log.BackupType</span>
+                        </td>
+                        <td>
+                            <div>@log.StartTime.ToString("dd/MM/yyyy HH:mm:ss")</div>
+                            <div style="font-size:11px; color: var(--text-secondary);">
+                                @(log.EndTime?.ToString("HH:mm:ss") ?? "Processando...")
+                            </div>
+                        </td>
+                        <td>
+                            <div>@FormatBytes(log.TransferredBytes)</div>
+                            <div style="font-size:11px; color: var(--text-secondary);">Orig: @FormatBytes(log.ProcessedBytes)</div>
+                        </td>
+                        <td>@log.SpeedMBps.ToString("F1") MB/s</td>
+                        <td>
+                            <span class="badge @GetStatusBadgeClass(log.Status)">
+                                @if (log.Status == "Running")
+                                {
+                                    <span class="fluent-spinner" style="width:12px;height:12px;border-width:2px;margin-bottom:0;display:inline-block;margin-right:6px;vertical-align:middle;"></span>
+                                    <span>@BackupEngine.GetProgress(log.JobId ?? 0)%</span>
+                                }
+                                else
+                                {
+                                    <span>@log.Status</span>
+                                }
+                            </span>
+                        </td>
+                        <td>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn btn-secondary" @onclick="() => OpenLogModal(log)" style="padding: 4px 8px; font-size: 11px;">Ver Log</button>
+                                @if (log.Status != "Running")
+                                {
+                                    <button class="btn btn-danger" @onclick="() => DeleteLog(log.Id)" style="padding: 4px 8px; font-size: 11px; background: rgba(168,0,0,0.15); color: #f87171; border: none;">Excluir</button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+<!-- Log Modal Popup -->
+@if (_selectedLog != null)
+{
+    <div class="modal-overlay">
+        <div class="modal-content" style="width: 750px;">
+            <div class="modal-header">
+                <h3 class="section-title">Registro de Auditoria - @_selectedLog.JobName</h3>
+                <button class="theme-toggle" @onclick="CloseLogModal" style="border:none;">×</button>
+            </div>
+            <div class="modal-body">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; font-size:12px; color:var(--text-secondary); margin-bottom:12px;">
+                    <div><strong>Início:</strong> @_selectedLog.StartTime.ToString("dd/MM/yyyy HH:mm:ss")</div>
+                    <div><strong>Tamanho Transferido:</strong> @FormatBytes(_selectedLog.TransferredBytes)</div>
+                    <div><strong>Duração:</strong> @((_selectedLog.EndTime - _selectedLog.StartTime)?.ToString("hh\\:mm\\:ss") ?? "Em andamento")</div>
+                    <div><strong>Velocidade Média:</strong> @_selectedLog.SpeedMBps.ToString("F1") MB/s</div>
+                </div>
+                <h4 style="font-size:13px; margin-bottom:6px;">Saída do Terminal de Backup:</h4>
+                <div class="log-monitor">@_selectedLog.LogDetails</div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseLogModal">Fechar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private int _totalJobs = 0;
+    private long _totalStorage = 0;
+    private string _totalStorageStr = "0.00 B";
+    private double _successRate = 100;
+    private int _warnings = 0;
+
+    private List<BackupLog> _logs = new();
+    private BackupLog? _selectedLog = null;
+
+    // Simulated weekly GB transfers for the chart
+    private double[] _chartData = { 12.4, 28.1, 4.3, 33.8, 15.2, 8.7 };
+    private string[] _chartLabels = new string[6];
+
+    protected override void OnInitialized()
+    {
+        LoadData();
+        InitializeChartLabels();
+        
+        BackupEngine.OnJobProgressUpdated += HandleProgressUpdate;
+        BackupEngine.OnAnyJobCompleted += HandleJobCompleted;
+    }
+
+    private void InitializeChartLabels()
+    {
+        var now = DateTime.Now;
+        for (int i = 5; i >= 0; i--)
+        {
+            var day = now.AddDays(-i);
+            _chartLabels[5 - i] = day.ToString("ddd", new System.Globalization.CultureInfo("pt-BR")).ToUpper();
+        }
+    }
+
+    private void LoadData()
+    {
+        lock (DbContext)
+        {
+            _totalJobs = DbContext.BackupJobs.Count(j => j.IsActive);
+            
+            // Calc total storage used in completed backups
+            _totalStorage = DbContext.BackupLogs
+                .Where(l => l.Status == "Success" || l.Status == "Warning")
+                .Sum(l => l.TransferredBytes);
+            
+            _totalStorageStr = FormatBytes(_totalStorage);
+
+            // Calc Success Rate
+            var totalExecutions = DbContext.BackupLogs.Count();
+            if (totalExecutions > 0)
+            {
+                var successes = DbContext.BackupLogs.Count(l => l.Status == "Success");
+                _successRate = Math.Round(((double)successes / totalExecutions) * 100, 1);
+            }
+            else
+            {
+                _successRate = 100;
+            }
+
+            // Calc recent Warnings/Errors
+            _warnings = DbContext.BackupLogs.Count(l => l.Status == "Warning" || l.Status == "Error");
+
+            // Fetch logs
+            _logs = DbContext.BackupLogs.OrderByDescending(l => l.StartTime).Take(15).ToList();
+        }
+    }
+
+    private string GetStatusBadgeClass(string status) => status switch
+    {
+        "Success" => "badge-success",
+        "Warning" => "badge-warning",
+        "Error" => "badge-danger",
+        "Running" => "badge-info",
+        _ => "badge-secondary"
+    };
+
+    private void OpenLogModal(BackupLog log)
+    {
+        _selectedLog = log;
+    }
+
+    private void CloseLogModal()
+    {
+        _selectedLog = null;
+    }
+
+    private async Task DeleteLog(int logId)
+    {
+        await BackupEngine.DeleteBackupArchiveAsync(logId);
+        LoadData();
+    }
+
+    private void HandleProgressUpdate(int jobId, string status, double progress)
+    {
+        InvokeAsync(() => {
+            LoadData();
+            StateHasChanged();
+        });
+    }
+
+    private void HandleJobCompleted()
+    {
+        InvokeAsync(() => {
+            LoadData();
+            StateHasChanged();
+        });
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] suf = { "B", "KB", "MB", "GB", "TB" };
+        if (bytes == 0) return "0.00 B";
+        long bytesAbs = Math.Abs(bytes);
+        int place = Convert.ToInt32(Math.Floor(Math.Log(bytesAbs, 1024)));
+        double num = Math.Round(bytesAbs / Math.Pow(1024, place), 2);
+        return $"{(Math.Sign(bytes) * num):F2} {suf[place]}";
+    }
+
+    public void Dispose()
+    {
+        BackupEngine.OnJobProgressUpdated -= HandleProgressUpdate;
+        BackupEngine.OnAnyJobCompleted -= HandleJobCompleted;
+    }
+}

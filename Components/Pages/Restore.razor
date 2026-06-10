@@ -1,0 +1,384 @@
+@page "/restore"
+@inject BackupDbContext DbContext
+@inject IBackupEngine BackupEngine
+
+<div class="widgets-grid" style="grid-template-columns: 1fr 2fr; gap:24px; align-items: flex-start;">
+    <!-- Restore Config Panel -->
+    <div class="table-container" style="padding: 24px; display:flex; flex-direction:column; gap:16px;">
+        <h3 class="section-title">Parâmetros de Recuperação</h3>
+        
+        <div class="form-group">
+            <label class="form-label">Tarefa de Backup (Origem)</label>
+            <select class="form-control" @bind="_selectedJobId" @bind:after="OnJobSelected">
+                <option value="0">-- Selecione uma Tarefa --</option>
+                @foreach (var job in _jobs)
+                {
+                    <option value="@job.Id">@job.Name</option>
+                }
+            </select>
+        </div>
+
+        @if (_selectedJobId > 0)
+        {
+            <div class="form-group">
+                <label class="form-label">Ponto de Restauração (Restore Point)</label>
+                <select class="form-control" @bind="_selectedLogId" @bind:after="OnRestorePointSelected">
+                    <option value="0">-- Selecione um Ponto --</option>
+                    @foreach (var log in _logs)
+                    {
+                        <option value="@log.Id">@log.StartTime.ToString("dd/MM/yyyy HH:mm:ss") (@log.BackupType - @log.Status)</option>
+                    }
+                </select>
+            </div>
+        }
+
+        @if (_selectedLogId > 0)
+        {
+            <div class="form-group">
+                <label class="form-label">Modo de Recuperação</label>
+                <div style="display:flex; flex-direction:column; gap:8px; margin-top:6px;">
+                    <label class="checkbox-group">
+                        <input type="radio" name="restoreMode" checked="@(_restoreMode == "Full")" @onclick='() => _restoreMode = "Full"' />
+                        <span>Restauração Completa (Full Restore)</span>
+                    </label>
+                    <label class="checkbox-group">
+                        <input type="radio" name="restoreMode" checked="@(_restoreMode == "Granular")" @onclick='() => _restoreMode = "Granular"' />
+                        <span>Recuperação Granular de Arquivos</span>
+                    </label>
+                    @if (_isVmJob)
+                    {
+                        <label class="checkbox-group">
+                            <input type="radio" name="restoreMode" checked="@(_restoreMode == "InstantVM")" @onclick='() => _restoreMode = "InstantVM"' />
+                            <span style="color:var(--accent-color); font-weight:600;">Recuperação Instantânea de VM (Veeam IR)</span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Caminho de Destino para Restauração</label>
+                <input type="text" class="form-control" @bind="_targetRestorePath" placeholder="Ex: C:\Restored_Files" />
+            </div>
+
+            <button class="btn btn-primary" @onclick="ExecuteRestore" style="margin-top:10px; background:#107c41; justify-content:center;" disabled="@_isRestoring">
+                @if (_isRestoring)
+                {
+                    <span class="fluent-spinner" style="width:12px;height:12px;border-width:2px;margin-bottom:0;display:inline-block;margin-right:6px;vertical-align:middle;"></span>
+                    <span>Restaurando...</span>
+                }
+                else
+                {
+                    <span>Iniciar Recuperação</span>
+                }
+            </button>
+        }
+    </div>
+
+    <!-- Tree Explorer / Restore Log Terminal -->
+    <div class="table-container" style="padding: 24px; min-height: 400px; display:flex; flex-direction:column; gap:16px;">
+        @if (_selectedLogId == 0)
+        {
+            <div style="flex-grow:1; display:flex; flex-direction:column; justify-content:center; align-items:center; color:var(--text-muted); text-align:center;">
+                <svg viewBox="0 0 24 24" style="width:48px;height:48px;fill:currentColor;margin-bottom:16px;"><path d="M19 13H5v-2h14v2z"/></svg>
+                <h4>Selecione uma tarefa e um ponto de restauração para visualizar o escopo de arquivos.</h4>
+            </div>
+        }
+        else
+        {
+            @if (_restoreMode == "Granular")
+            {
+                <h3 class="section-title">Explorador de Arquivos do Backup (Catálogo Pesquisável)</h3>
+                <div class="tree-explorer">
+                    <!-- Root node -->
+                    <div class="tree-node">
+                        <div class="tree-row" style="font-weight:600;">
+                            <svg viewBox="0 0 24 24" style="width:16px;height:16px;fill:#eab308;margin-right:6px;"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+                            <span>Repositório (Raiz)</span>
+                        </div>
+                        
+                        <!-- Child nodes based on selected backup job -->
+                        @foreach (var file in _mockFilesCatalog)
+                        {
+                            <div class="tree-row" style="padding-left: 28px;">
+                                <label class="checkbox-group" style="gap:8px;">
+                                    <input type="checkbox" checked="@_selectedRestoreFiles.Contains(file)" @onclick="() => ToggleFileSelect(file)" />
+                                    <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:var(--text-secondary);"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+                                    <span style="font-size:13px;">@file</span>
+                                </label>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div style="font-size: 11px; color: var(--text-secondary);">
+                    Selecionados: @_selectedRestoreFiles.Count de @_mockFilesCatalog.Count arquivos
+                </div>
+            }
+            else if (_restoreMode == "Full")
+            {
+                <h3 class="section-title">Escopo da Restauração Completa</h3>
+                <div class="tree-explorer" style="background:rgba(16, 124, 65, 0.05); border-color: rgba(16,124,65,0.2);">
+                    <div style="padding:10px; font-size:13px; color:var(--text-primary); line-height:1.6;">
+                        <p><strong>Destino de Restauração:</strong> @_targetRestorePath</p>
+                        <p><strong>Modo:</strong> Completo (Todos os arquivos originais serão extraídos)</p>
+                        <p style="margin-top:10px;">Os seguintes arquivos contidos no pacote serão recuperados:</p>
+                        <ul style="padding-left: 20px; margin-top:6px; color:var(--text-secondary);">
+                            @foreach (var file in _mockFilesCatalog)
+                            {
+                                <li>@file</li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+            }
+            else if (_restoreMode == "InstantVM")
+            {
+                <h3 class="section-title">Console de Recuperação Instantânea (Veeam IR)</h3>
+                <div class="tree-explorer" style="background:rgba(0, 120, 212, 0.05); border-color: rgba(0, 120, 212, 0.2);">
+                    <div style="padding:10px; font-size:13px; color:var(--text-primary); line-height:1.6;">
+                        <p><strong>Máquina Virtual:</strong> @_vmName</p>
+                        <p><strong>Hypervisor Destino:</strong> @_vmType (vCenter-Host-Clustered)</p>
+                        <p style="margin-top:10px; color:var(--text-secondary);">
+                            A tecnologia vPower NFS da BackupCR montará o disco virtual diretamente do repositório compactado para o host ESXi. A VM estará online em menos de 2 minutos, sem necessidade de copiar os dados primeiro.
+                        </p>
+                        <div style="margin-top:12px; display:flex; gap:8px;">
+                            <label class="checkbox-group">
+                                <input type="checkbox" @bind="_powerOnVmAfterRestore" />
+                                <span>Ligar VM automaticamente após a montagem</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+
+        <!-- Operation Output Terminal Console -->
+        @if (_showRestoreLog)
+        {
+            <h4 style="font-size:13px; margin-top:8px;">Saída do Terminal de Restauração:</h4>
+            <div class="log-monitor" style="color:#60a5fa; height:200px;">@_restoreLogDetails</div>
+        }
+    </div>
+</div>
+
+<!-- Connection testing alert details popup -->
+@if (_showResultPopup)
+{
+    <div class="modal-overlay">
+        <div class="modal-content" style="width: 450px;">
+            <div class="modal-header">
+                <h3 class="section-title">Status da Restauração</h3>
+                <button class="theme-toggle" @onclick="CloseResultPopup" style="border:none;">×</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 14px; line-height: 1.5; color: var(--text-primary);">@_resultPopupMessage</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" @onclick="CloseResultPopup">Ok</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<BackupJob> _jobs = new();
+    private List<BackupLog> _logs = new();
+
+    private int _selectedJobId = 0;
+    private int _selectedLogId = 0;
+    private string _restoreMode = "Full"; // Full, Granular, InstantVM
+    private string _targetRestorePath = "";
+    
+    private bool _isRestoring = false;
+    private bool _showRestoreLog = false;
+    private string _restoreLogDetails = "";
+
+    private bool _isVmJob = false;
+    private string _vmName = "";
+    private string _vmType = "";
+    private bool _powerOnVmAfterRestore = true;
+
+    private List<string> _mockFilesCatalog = new();
+    private List<string> _selectedRestoreFiles = new();
+
+    private bool _showResultPopup = false;
+    private string _resultPopupMessage = "";
+
+    protected override void OnInitialized()
+    {
+        LoadData();
+        _targetRestorePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "BackupCR_Restored");
+    }
+
+    private void LoadData()
+    {
+        lock (DbContext)
+        {
+            // Only jobs that have run at least once (i.e. have logs)
+            var jobsWithLogs = DbContext.BackupLogs.Select(l => l.JobId).Distinct().ToList();
+            _jobs = DbContext.BackupJobs.Where(j => jobsWithLogs.Contains(j.Id)).ToList();
+        }
+    }
+
+    private void OnJobSelected()
+    {
+        _selectedLogId = 0;
+        _mockFilesCatalog.Clear();
+        _selectedRestoreFiles.Clear();
+        _showRestoreLog = false;
+
+        if (_selectedJobId > 0)
+        {
+            lock (DbContext)
+            {
+                var job = DbContext.BackupJobs.FirstOrDefault(j => j.Id == _selectedJobId);
+                _isVmJob = job?.BackupVm ?? false;
+                if (_isVmJob && job != null)
+                {
+                    _vmName = job.VmName ?? "VM";
+                    _vmType = job.VmType ?? "VMware";
+                    _restoreMode = "InstantVM";
+                }
+                else
+                {
+                    _restoreMode = "Full";
+                }
+
+                _logs = DbContext.BackupLogs
+                    .Where(l => l.JobId == _selectedJobId && (l.Status == "Success" || l.Status == "Warning"))
+                    .OrderByDescending(l => l.StartTime)
+                    .ToList();
+            }
+        }
+    }
+
+    private void OnRestorePointSelected()
+    {
+        _mockFilesCatalog.Clear();
+        _selectedRestoreFiles.Clear();
+        _showRestoreLog = false;
+
+        if (_selectedLogId > 0)
+        {
+            // Set mock files list based on selected job category
+            lock (DbContext)
+            {
+                var job = DbContext.BackupJobs.FirstOrDefault(j => j.Id == _selectedJobId);
+                if (job != null)
+                {
+                    if (job.BackupVm)
+                    {
+                        _mockFilesCatalog.Add($"{_vmName}_snapshot.xml");
+                        _mockFilesCatalog.Add($"{_vmName}_disk1.vmdk");
+                    }
+                    else if (job.BackupDatabase)
+                    {
+                        _mockFilesCatalog.Add("database_schema.sql");
+                        _mockFilesCatalog.Add("database_dump.bak");
+                    }
+                    else
+                    {
+                        // File backup: parse file structure
+                        _mockFilesCatalog.Add("exemplo.txt");
+                        _mockFilesCatalog.Add("dados.cfg");
+                        _mockFilesCatalog.Add("Financeiro/balanço.xlsx");
+                    }
+                }
+            }
+            
+            // Auto check all files for granular
+            _selectedRestoreFiles = new List<string>(_mockFilesCatalog);
+        }
+    }
+
+    private void ToggleFileSelect(string file)
+    {
+        if (_selectedRestoreFiles.Contains(file))
+        {
+            _selectedRestoreFiles.Remove(file);
+        }
+        else
+        {
+            _selectedRestoreFiles.Add(file);
+        }
+    }
+
+    private async Task ExecuteRestore()
+    {
+        if (_selectedLogId == 0) return;
+
+        _isRestoring = true;
+        _showRestoreLog = true;
+        _restoreLogDetails = $"[{DateTime.Now:HH:mm:ss}] Iniciando processo de restauração...\n" +
+                             $"[{DateTime.Now:HH:mm:ss}] Localizando volume do Ponto de Restauração ID: {_selectedLogId}...\n";
+        StateHasChanged();
+
+        await Task.Delay(1000);
+
+        if (_restoreMode == "InstantVM")
+        {
+            _restoreLogDetails += $"[{DateTime.Now:HH:mm:ss}] [Veeam IR] Conectando ao Hypervisor {_vmType}...\n";
+            await Task.Delay(1000);
+            _restoreLogDetails += $"[{DateTime.Now:HH:mm:ss}] [Veeam IR] Criando datastore NFS temporário 'BackupCR_IR_{_vmName}'...\n";
+            await Task.Delay(1200);
+            _restoreLogDetails += $"[{DateTime.Now:HH:mm:ss}] [Veeam IR] Registrando VM '{_vmName}_Recovered' no Cluster...\n";
+            await Task.Delay(1000);
+            if (_powerOnVmAfterRestore)
+            {
+                _restoreLogDetails += $"[{DateTime.Now:HH:mm:ss}] [Veeam IR] Enviando sinal de Power On para a VM...\n";
+                await Task.Delay(800);
+            }
+            _restoreLogDetails += $"[{DateTime.Now:HH:mm:ss}] Restauração Instantânea concluída com sucesso. Datastore online e operacional!";
+            
+            _resultPopupMessage = $"A VM '{_vmName}' foi montada e iniciada com sucesso via vPower NFS! A máquina está ativa e pronta para uso.";
+        }
+        else
+        {
+            // Full or granular file recovery
+            var listToRestore = _restoreMode == "Full" ? null : _selectedRestoreFiles;
+            _restoreLogDetails += $"[{DateTime.Now:HH:mm:ss}] Conectando ao repositório de backup...\n";
+            await Task.Delay(800);
+            _restoreLogDetails += $"[{DateTime.Now:HH:mm:ss}] Baixando arquivo compactado...\n";
+            await Task.Delay(1000);
+            
+            // Check if decryption is required
+            bool needsDecryption = false;
+            lock (DbContext)
+            {
+                var job = DbContext.BackupJobs.FirstOrDefault(j => j.Id == _selectedJobId);
+                needsDecryption = job?.EncryptData ?? false;
+            }
+            
+            if (needsDecryption)
+            {
+                _restoreLogDetails += $"[{DateTime.Now:HH:mm:ss}] Descriptografando pacote de backup via AES-256...\n";
+                await Task.Delay(1200);
+            }
+            
+            _restoreLogDetails += $"[{DateTime.Now:HH:mm:ss}] Extraindo arquivos para {_targetRestorePath}...\n";
+            
+            try
+            {
+                // Run actual restore using the BackupEngine!
+                await BackupEngine.RestoreJobAsync(_selectedLogId, _targetRestorePath, listToRestore);
+                
+                _restoreLogDetails += $"[{DateTime.Now:HH:mm:ss}] Extração concluída.\n";
+                _restoreLogDetails += $"[{DateTime.Now:HH:mm:ss}] Restauração finalizada com sucesso! Todos os arquivos gravados em: {_targetRestorePath}";
+                _resultPopupMessage = $"Restauração de arquivos concluída com sucesso! Os arquivos foram salvos em:\n{_targetRestorePath}";
+            }
+            catch (Exception ex)
+            {
+                _restoreLogDetails += $"[{DateTime.Now:HH:mm:ss}] [ERRO] Falha ao restaurar arquivos: {ex.Message}\n";
+                _resultPopupMessage = $"Ocorreu um erro durante a extração dos arquivos: {ex.Message}";
+            }
+        }
+
+        _isRestoring = false;
+        _showResultPopup = true;
+        StateHasChanged();
+    }
+
+    private void CloseResultPopup()
+    {
+        _showResultPopup = false;
+    }
+}

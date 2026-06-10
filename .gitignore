@@ -1,0 +1,23 @@
+# .NET build outputs
+bin/
+obj/
+
+# Publish output directories
+publish_portable/
+publish_installer/
+
+# Local databases and runtime state
+*.db
+*.db-journal
+*.db-wal
+database.json
+
+# Local diagnostic logs
+log.txt
+crash_log.txt
+err.txt
+
+# VS/user settings
+.vs/
+*.user
+*.suo
