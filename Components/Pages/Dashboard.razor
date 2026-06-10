@@ -247,10 +247,10 @@
         {
             _totalJobs = DbContext.BackupJobs.Count(j => j.IsActive);
             
-            // Calc total storage used in completed backups
+            // Calc total storage used in completed backups - using nullable cast to avoid EF Core SQL null return exceptions
             _totalStorage = DbContext.BackupLogs
                 .Where(l => l.Status == "Success" || l.Status == "Warning")
-                .Sum(l => l.TransferredBytes);
+                .Sum(l => (long?)l.TransferredBytes) ?? 0;
             
             _totalStorageStr = FormatBytes(_totalStorage);
 
@@ -268,6 +268,20 @@
 
             // Calc recent Warnings/Errors
             _warnings = DbContext.BackupLogs.Count(l => l.Status == "Warning" || l.Status == "Error");
+
+            // Calculate actual transfer volume for the last 6 days from logs
+            var today = DateTime.Today;
+            for (int i = 0; i < 6; i++)
+            {
+                var targetDate = today.AddDays(-(5 - i));
+                var nextDate = targetDate.AddDays(1);
+                
+                var dailyBytes = DbContext.BackupLogs
+                    .Where(l => l.StartTime >= targetDate && l.StartTime < nextDate && (l.Status == "Success" || l.Status == "Warning"))
+                    .Sum(l => (long?)l.TransferredBytes) ?? 0;
+                
+                _chartData[i] = Math.Round((double)dailyBytes / (1024 * 1024 * 1024), 2);
+            }
 
             // Fetch logs
             _logs = DbContext.BackupLogs.OrderByDescending(l => l.StartTime).Take(15).ToList();

@@ -1,0 +1,6 @@
+{
+  "// Comentário": "Para utilizar este arquivo, renomeie-o para 'database.json' e coloque-o na mesma pasta do executável do BackupCR.",
+  "DatabaseType": "SQLite",
+  "ConnectionString": "Data Source=C:\\ProgramData\\BackupCR\\backupcr_production.db",
+  "Production": true
+}

@@ -26,14 +26,12 @@ Name: "startup"; Description: "Iniciar o BackupCR automaticamente com o Windows"
 
 [Files]
 Source: "bin\Release\net8.0-windows\win-x64\publish\BackupCR.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "icons\icon.ico"; DestDir: "{app}\icons"; Flags: ignoreversion
-Source: "icons\icon.png"; DestDir: "{app}\icons"; Flags: ignoreversion
-Source: "wwwroot\*"; DestDir: "{app}\wwwroot"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "database.json.example"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\BackupCR"; Filename: "{app}\BackupCR.exe"; IconFilename: "{app}\icons\icon.ico"
-Name: "{autodesktop}\BackupCR"; Filename: "{app}\BackupCR.exe"; IconFilename: "{app}\icons\icon.ico"; Tasks: desktopicon
-Name: "{userstartup}\BackupCR"; Filename: "{app}\BackupCR.exe"; Parameters: "/minimized"; IconFilename: "{app}\icons\icon.ico"; Tasks: startup
+Name: "{group}\BackupCR"; Filename: "{app}\BackupCR.exe"
+Name: "{autodesktop}\BackupCR"; Filename: "{app}\BackupCR.exe"; Tasks: desktopicon
+Name: "{userstartup}\BackupCR"; Filename: "{app}\BackupCR.exe"; Parameters: "/minimized"; Tasks: startup
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "BackupCR"; ValueData: """{app}\BackupCR.exe"" /minimized"; Tasks: startup; Flags: uninsdeletevalue

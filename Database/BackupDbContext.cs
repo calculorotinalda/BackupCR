@@ -13,6 +13,10 @@ namespace BackupCR.Database
         public DbSet<BackupLog> BackupLogs { get; set; } = null!;
         public DbSet<AppSettings> AppSettings { get; set; } = null!;
 
+        public string DatabaseType { get; private set; } = "SQLite";
+        public string DatabaseConnectionString { get; private set; } = "Data Source=backupcr.db";
+        public bool IsProduction { get; private set; } = true;
+
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             if (!optionsBuilder.IsConfigured)
@@ -20,6 +24,17 @@ namespace BackupCR.Database
                 string configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "database.json");
                 string connectionString = "";
                 string dbType = "SQLite";
+                bool isProduction = true; // Default to production (clean database)
+
+                // Check Environment Variables
+                string envVal = Environment.GetEnvironmentVariable("BACKUPCR_ENV") 
+                             ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") 
+                             ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") 
+                             ?? "";
+                if (envVal.Equals("Development", StringComparison.OrdinalIgnoreCase))
+                {
+                    isProduction = false;
+                }
 
                 if (File.Exists(configPath))
                 {
@@ -33,6 +48,12 @@ namespace BackupCR.Database
                                 dbType = typeProp.GetString() ?? "SQLite";
                             if (root.TryGetProperty("ConnectionString", out var connProp))
                                 connectionString = connProp.GetString() ?? "";
+                            if (root.TryGetProperty("Production", out var prodProp))
+                                isProduction = prodProp.ValueKind == JsonValueKind.True || (prodProp.ValueKind == JsonValueKind.String && prodProp.GetString()?.Equals("true", StringComparison.OrdinalIgnoreCase) == true);
+                            else if (root.TryGetProperty("IsProduction", out var isProdProp))
+                                isProduction = isProdProp.ValueKind == JsonValueKind.True || (isProdProp.ValueKind == JsonValueKind.String && isProdProp.GetString()?.Equals("true", StringComparison.OrdinalIgnoreCase) == true);
+                            else if (root.TryGetProperty("Environment", out var envProp))
+                                isProduction = !envProp.GetString()?.Equals("Development", StringComparison.OrdinalIgnoreCase) == true;
                         }
                     }
                     catch
@@ -41,8 +62,12 @@ namespace BackupCR.Database
                     }
                 }
 
+                DatabaseType = dbType;
+                IsProduction = isProduction;
+
                 if (dbType.Equals("MySQL", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(connectionString))
                 {
+                    DatabaseConnectionString = connectionString;
                     optionsBuilder.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
                 }
                 else
@@ -54,7 +79,8 @@ namespace BackupCR.Database
                         Directory.CreateDirectory(backupCrDir);
                     }
                     string dbPath = Path.Combine(backupCrDir, "backupcr.db");
-                    optionsBuilder.UseSqlite($"Data Source={dbPath}");
+                    DatabaseConnectionString = $"Data Source={dbPath}";
+                    optionsBuilder.UseSqlite(DatabaseConnectionString);
                 }
             }
         }
@@ -71,9 +97,16 @@ namespace BackupCR.Database
                     RansomwareProtectionEnabled = true,
                     MfaEnabled = false,
                     ActiveDirectoryEnabled = false,
-                    DatabaseType = "SQLite",
-                    DatabaseConnectionString = "Data Source=backupcr.db"
+                    DatabaseType = DatabaseType,
+                    DatabaseConnectionString = DatabaseConnectionString
                 });
+                SaveChanges();
+            }
+
+            if (IsProduction)
+            {
+                // Abort example seeding if in production mode
+                return;
             }
 
             // Seed Destinations

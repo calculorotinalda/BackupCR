@@ -40,14 +40,9 @@ try {
         New-Item -ItemType Directory -Path $portableDir | Out-Null
     }
 
-    # Copiar o executável único e pastas de recursos
+    # Copiar o executável único e arquivo de configuração de exemplo
     Copy-Item "bin\Release\net8.0-windows\win-x64\publish\BackupCR.exe" -Destination "$portableDir\BackupCR.exe" -Force
-    
-    if (-not (Test-Path "$portableDir\icons")) { New-Item -ItemType Directory -Path "$portableDir\icons" | Out-Null }
-    Copy-Item "icons\*" -Destination "$portableDir\icons" -Recurse -Force
-    
-    if (-not (Test-Path "$portableDir\wwwroot")) { New-Item -ItemType Directory -Path "$portableDir\wwwroot" | Out-Null }
-    Copy-Item "wwwroot\*" -Destination "$portableDir\wwwroot" -Recurse -Force
+    Copy-Item "database.json.example" -Destination "$portableDir\database.json.example" -Force
 
     "=========================================" | Out-File $logFile -Append -Encoding utf8
     "Compilação concluída com SUCESSO!" | Out-File $logFile -Append -Encoding utf8
