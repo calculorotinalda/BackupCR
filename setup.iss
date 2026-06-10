@@ -33,10 +33,10 @@ Source: "wwwroot\*"; DestDir: "{app}\wwwroot"; Flags: ignoreversion recursesubdi
 [Icons]
 Name: "{group}\BackupCR"; Filename: "{app}\BackupCR.exe"; IconFilename: "{app}\icons\icon.ico"
 Name: "{autodesktop}\BackupCR"; Filename: "{app}\BackupCR.exe"; IconFilename: "{app}\icons\icon.ico"; Tasks: desktopicon
-Name: "{userstartup}\BackupCR"; Filename: "{app}\BackupCR.exe"; IconFilename: "{app}\icons\icon.ico"; Tasks: startup
+Name: "{userstartup}\BackupCR"; Filename: "{app}\BackupCR.exe"; Parameters: "/minimized"; IconFilename: "{app}\icons\icon.ico"; Tasks: startup
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "BackupCR"; ValueData: """{app}\BackupCR.exe"""; Tasks: startup; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "BackupCR"; ValueData: """{app}\BackupCR.exe"" /minimized"; Tasks: startup; Flags: uninsdeletevalue
 
 [Run]
 Filename: "{app}\BackupCR.exe"; Description: "{cm:LaunchProgram,BackupCR}"; Flags: nowait postinstall skipifsilent

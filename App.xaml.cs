@@ -12,7 +12,10 @@ namespace BackupCR
 
         protected override void OnStartup(StartupEventArgs e)
         {
+            System.IO.Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
             base.OnStartup(e);
+
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
             AppDomain.CurrentDomain.UnhandledException += (s, ev) => LogUnhandledException(ev.ExceptionObject as Exception);
             DispatcherUnhandledException += (s, ev) => {
@@ -51,8 +54,32 @@ namespace BackupCR
             }
             catch (Exception ex)
             {
-                // Log scheduler startup error silently
                 System.Diagnostics.Debug.WriteLine($"Erro ao iniciar o agendador: {ex.Message}");
+            }
+
+            // Register for Windows Startup
+            RegisterForStartup();
+
+            // Instantiate MainWindow
+            var mainWindow = new MainWindow();
+
+            bool startMinimized = false;
+            foreach (var arg in e.Args)
+            {
+                if (arg.Equals("/minimized", StringComparison.OrdinalIgnoreCase) || 
+                    arg.Equals("--minimized", StringComparison.OrdinalIgnoreCase))
+                {
+                    startMinimized = true;
+                }
+            }
+
+            if (!startMinimized)
+            {
+                mainWindow.Show();
+            }
+            else
+            {
+                mainWindow.Hide();
             }
         }
 
@@ -127,6 +154,23 @@ namespace BackupCR
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Erro ao extrair recurso {resourceUri}: {ex.Message}");
+            }
+        }
+
+        private void RegisterForStartup()
+        {
+            try
+            {
+                string exePath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "BackupCR.exe");
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
+                if (key != null)
+                {
+                    key.SetValue("BackupCR", $"\"{exePath}\" /minimized");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Erro ao registrar no Windows Run: {ex.Message}");
             }
         }
 
