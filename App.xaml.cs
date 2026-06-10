@@ -21,6 +21,8 @@ namespace BackupCR
             };
             System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (s, ev) => LogUnhandledException(ev.Exception);
 
+            EnsureLocalResources();
+
             var services = new ServiceCollection();
             ConfigureServices(services);
 
@@ -81,6 +83,50 @@ namespace BackupCR
             catch
             {
                 // Suppress
+            }
+        }
+
+        private void EnsureLocalResources()
+        {
+            try
+            {
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                string wwwrootDir = System.IO.Path.Combine(baseDir, "wwwroot");
+                string cssDir = System.IO.Path.Combine(wwwrootDir, "css");
+                string iconsDir = System.IO.Path.Combine(baseDir, "icons");
+
+                if (!System.IO.Directory.Exists(wwwrootDir)) System.IO.Directory.CreateDirectory(wwwrootDir);
+                if (!System.IO.Directory.Exists(cssDir)) System.IO.Directory.CreateDirectory(cssDir);
+                if (!System.IO.Directory.Exists(iconsDir)) System.IO.Directory.CreateDirectory(iconsDir);
+
+                WriteResourceToFile("pack://application:,,,/wwwroot/index.html", System.IO.Path.Combine(wwwrootDir, "index.html"));
+                WriteResourceToFile("pack://application:,,,/wwwroot/css/app.css", System.IO.Path.Combine(cssDir, "app.css"));
+                WriteResourceToFile("pack://application:,,,/icons/icon.ico", System.IO.Path.Combine(iconsDir, "icon.ico"));
+                WriteResourceToFile("pack://application:,,,/icons/icon.png", System.IO.Path.Combine(iconsDir, "icon.png"));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Erro ao garantir recursos locais: {ex.Message}");
+            }
+        }
+
+        private void WriteResourceToFile(string resourceUri, string targetFilePath)
+        {
+            try
+            {
+                if (System.IO.File.Exists(targetFilePath)) return;
+
+                var uri = new Uri(resourceUri);
+                var streamResourceInfo = System.Windows.Application.GetResourceStream(uri);
+                if (streamResourceInfo != null)
+                {
+                    using var fileStream = System.IO.File.Create(targetFilePath);
+                    streamResourceInfo.Stream.CopyTo(fileStream);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Erro ao extrair recurso {resourceUri}: {ex.Message}");
             }
         }
 

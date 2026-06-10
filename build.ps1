@@ -14,7 +14,7 @@ try {
     "Rodando comando: dotnet publish -c Release -r win-x64 --self-contained true" | Out-File $logFile -Append -Encoding utf8
 
     # Iniciar dotnet publish capturando stdout/stderr
-    $p = Start-Process dotnet -ArgumentList "publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true" -NoNewWindow -PassThru -Wait -RedirectStandardOutput "stdout.txt" -RedirectStandardError "stderr.txt"
+    $p = Start-Process dotnet -ArgumentList "publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=false -p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true -p:UseSharedCompilation=false -p:NodeReuse=false" -NoNewWindow -PassThru -Wait -RedirectStandardOutput "stdout.txt" -RedirectStandardError "stderr.txt"
 
     $stdout = ""
     $stderr = ""

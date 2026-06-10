@@ -19,6 +19,8 @@
   <ItemGroup>
     <Resource Include="icons\icon.ico" />
     <Resource Include="icons\icon.png" />
+    <Resource Include="wwwroot\index.html" />
+    <Resource Include="wwwroot\css\app.css" />
   </ItemGroup>
 
   <ItemGroup>
